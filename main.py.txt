@@ -1,0 +1,42 @@
+from fastapi import FastAPI, File, UploadFile, Form
+from fastapi.responses import FileResponse, JSONResponse
+import subprocess
+import os
+import tempfile
+
+app = FastAPI(title="FFmpeg Video Generator")
+
+@app.post("/video")
+async def create_video(
+    image: UploadFile = File(...),
+    audio: UploadFile = File(...),
+    duration: str = Form("25")
+):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        image_path = os.path.join(tmpdir, "image.png")
+        audio_path = os.path.join(tmpdir, "audio.mp3")
+        video_path = os.path.join(tmpdir, "output.mp4")
+
+        with open(image_path, "wb") as f:
+            f.write(await image.read())
+        with open(audio_path, "wb") as f:
+            f.write(await audio.read())
+
+        cmd = [
+            "ffmpeg",
+            "-loop", "1",
+            "-i", image_path,
+            "-i", audio_path,
+            "-c:v", "libx264",
+            "-t", duration,
+            "-pix_fmt", "yuv420p",
+            "-y",
+            "-shortest",
+            video_path
+        ]
+
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, cwd=tmpdir, check=True)
+            return FileResponse(video_path, media_type="video/mp4", filename="mono_video.mp4")
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"error": str(e)})
